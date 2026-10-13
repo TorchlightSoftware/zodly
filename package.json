@@ -1,0 +1,49 @@
+{
+  "name": "zodly",
+  "version": "0.1.0",
+  "description": "zod schemas written as plain data: ['string', 'email', 'optional']",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "docs/"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "npx eslint ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TorchlightSoftware/zodly.git"
+  },
+  "keywords": [
+    "zod",
+    "schema",
+    "validation",
+    "json",
+    "dsl",
+    "shorthand"
+  ],
+  "author": "q@bitmage.net",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/TorchlightSoftware/zodly/issues"
+  },
+  "homepage": "https://github.com/TorchlightSoftware/zodly#readme",
+  "peerDependencies": {
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@stylistic/eslint-plugin": "^5.2.0",
+    "eslint": "^9.31.0",
+    "zod": "^4.6.7",
+    "zodex": "^4.0.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
