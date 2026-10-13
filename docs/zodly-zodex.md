@@ -12,15 +12,17 @@ The default (shorthand) notation for a type in `zodly` is to simply use its name
 | `['number']` | `{"type": "number"}` |
 | `['boolean']` | `{"type": "boolean"}` |
 | `['date']` | `{"type": "date"}` |
-| `['string', 'email']` | `{"type": "string", "kind": "email"}` |
-| `['number', 'positive', 'int']` | `{"type": "number", "min": 0, "format": "safeint"}` |
+| `['string', 'email']` | `{"type": "string"}` |
+| `['number', 'positive', 'int']` | `{"type": "number", "min": 0}` |
 | `['string', {min: 5, max: 100}]` | `{"type": "string", "min": 5, "max": 100}` |
 | `['string', 'optional']` | `{"type": "string", "isOptional": true}` |
 | `['number', 'nullable']` | `{"type": "number", "isNullable": true}` |
 | `['string', 'optional', 'nullable']` | `{"type": "string", "isOptional": true, "isNullable": true}` |
-| `['number', 'positive', 'int', 'optional']` | `{"type": "number", "min": 0, "format": "safeint", "isOptional": true}` |
+| `['number', 'positive', 'int', 'optional']` | `{"type": "number", "min": 0, "isOptional": true}` |
 | `['error']` | an error in canonical object representation (below) |
 | `['error', 'optional']` | the same, with `"isOptional": true` |
+
+**zodex drops formats written as modifiers.** zod 4 says a format two ways: as a type of its own, `z.email()`, or as a check on a string or number, `z.string().email()`, which is what a zodly modifier makes. zodex 4.0.1 keeps the first (`{"type": "string", "kind": "email"}`) and drops the second, so `['string', 'email']` and `['number', 'int']` lose their format through zodex, as the tables here show. The same goes for `uuid` and `url`, and, we expect, for zod's other formats.
 
 ## Object Declarations
 
@@ -41,7 +43,7 @@ At the root, and as a field's type, object syntax represents an object in the ta
   "properties": {
     "name": {"type": "string"},
     "age": {"type": "number", "min": 0},
-    "email": {"type": "string", "kind": "email", "isOptional": true}
+    "email": {"type": "string", "isOptional": true}
   }
 }
 ```
@@ -154,7 +156,7 @@ precheck: {
         "type": "object",
         "properties": {
           "name": {"type": "string"},
-          "email": {"type": "string", "kind": "email"},
+          "email": {"type": "string"},
           "age": {"type": "number", "min": 0}
         }
       }
@@ -165,7 +167,7 @@ precheck: {
     "properties": {
       "id": {"type": "number"},
       "name": {"type": "string"},
-      "email": {"type": "string", "kind": "email"}
+      "email": {"type": "string"}
     }
   }
 }
@@ -203,7 +205,7 @@ precheck: {
 {
   "type": "object",
   "properties": {
-    "to": {"type": "string", "kind": "email"},
+    "to": {"type": "string"},
     "subject": {"type": "string", "min": 1, "max": 200},
     "body": {"type": "string"}
   }
@@ -298,8 +300,8 @@ precheck: {
         "customer": {
           "type": "object",
           "properties": {
-            "id": {"type": "string", "kind": "uuid"},
-            "email": {"type": "string", "kind": "email"}
+            "id": {"type": "string"},
+            "email": {"type": "string"}
           }
         },
         "items": {
@@ -308,7 +310,7 @@ precheck: {
             "type": "object",
             "properties": {
               "productId": {"type": "string"},
-              "quantity": {"type": "number", "min": 0, "format": "safeint"},
+              "quantity": {"type": "number", "min": 0},
               "price": {"type": "number", "min": 0}
             }
           },
@@ -348,13 +350,13 @@ precheck: {
 {
   "type": "object",
   "properties": {
-    "userId": {"type": "string", "kind": "uuid"},
+    "userId": {"type": "string"},
     "updates": {
       "type": "object",
       "properties": {
         "name": {"type": "string", "isOptional": true},
         "bio": {"type": "string", "max": 500, "isOptional": true},
-        "avatar": {"type": "string", "kind": "url", "isOptional": true},
+        "avatar": {"type": "string", "isOptional": true},
         "age": {"type": "number", "min": 0, "isOptional": true}
       }
     }
@@ -442,6 +444,7 @@ precheck: {
 
 ## Date validation
 
+<!-- unchecked -->
 ```javascript
 // zodly
 precheck: {
@@ -469,4 +472,4 @@ precheck: {
 ## What the comparison shows
 
 - **zodex is 2–4× longer**, mostly because of `"type"`, `"properties"` and `"element"` wrappers. The shorthand object and the positional `['array', ['string']]` are where our syntax saves the most.
-- **Neither is lossless the other way.** Our syntax has no counterpart for zodex's `discriminatedUnion`, `literal` or `intersection` (defaults and descriptions are modifiers: `{default: …}`, `{describe: …}`). zodex drops `int` (zodex 4.0.1 serializes `['number', 'int']` as `{"type": "number"}`), turns regexes into strings, and has no name for `error`.
+- **Neither is lossless the other way.** Our syntax has no counterpart for zodex's `discriminatedUnion`, `literal` or `intersection` (defaults and descriptions are modifiers: `{default: …}`, `{describe: …}`). zodex drops formats that zodly writes as modifiers (`email`, `uuid`, `url`, `int`, ...), turns regexes into strings, and has no name for `error`.

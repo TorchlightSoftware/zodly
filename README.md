@@ -54,7 +54,17 @@ A descriptor is one of:
 ['array', ['string'], {nonempty: true}] // a method without an argument, in an object
 ```
 
-**Constraints apply before names, wherever they're written**, so `['array', ['string'], 'optional', {min: 2}]` is an optional list of at least two strings: `.min(2)` is called on the list before `.optional()` wraps it.
+**The order modifiers are written in doesn't matter.** zod applies methods in the order they're called, and some hide others: `.optional()` returns a wrapper with no `.min()`. So zodly applies modifiers by phase:
+
+| Phase | Modifiers | Why here |
+|---|---|---|
+| 1. variants | `loose`, `strict`, `passthrough`, `strip` | they replace an object schema, so they come before anything kept on it |
+| 2. transforms | `trim`, `toLowerCase`, `toUpperCase`, `normalize` | the checks see what they made |
+| 3. checks | everything not listed here: `min`, `email`, `int`, regexes, ... | checks commute |
+| 4. wrappers | `default`, `prefault`, `catch`, `nullable`, `nullish`, `optional`, `readonly`, in that order | each hides the methods of what it wraps |
+| 5. annotations | `describe`, `meta` | they describe the outermost schema, the one you hold |
+
+So `['string', 'optional', {min: 2}, 'trim']` trims, checks the length, then makes it optional. The one thing this can't say is a check before a transform, such as checking a raw length and then trimming; write the zod schema for that.
 
 **A modifier the schema has no method for is refused**, so a misspelling can't pass unnoticed.
 
@@ -64,6 +74,7 @@ A descriptor is one of:
 // Primitives
 ['string'] ['number'] ['boolean'] ['date'] ['any'] ['unknown'] ['void'] ['undefined'] ['null'] ['never']
 ['error']                                        // an error as data (below)
+['function']                                     // a function, such as a nested call
 
 // Lists and records
 ['array']                                        // a list of anything

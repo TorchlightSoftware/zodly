@@ -12,7 +12,8 @@
  *
  * After a type name, a bare string or object is always a modifier: a zod
  * method by name ('optional' calls .optional(), {min: 3} calls .min(3)), and
- * a regex calls .regex(). A type there is always bracketed (['string']) or
+ * a regex calls .regex(). Modifiers apply by phase (see PHASES), so the order
+ * they're written in doesn't matter. A type there is always bracketed (['string']) or
  * boxed ([{name: ['string']}]). The one exception is 'object', whose first
  * object is its object schema: ['object', {name: ['string']}].
  */
@@ -58,6 +59,8 @@ const TYPES = {
   union: {takes: 'options', build: (options) => z.union(options)},
   tuple: {takes: 'items', build: (items) => z.tuple(items)},
   enum: {takes: 'values', build: (values) => z.enum(values)},
+  // a function, such as a nested call handed to a service
+  function: {build: () => z.function()},
   object: {takes: 'shape', build: (shape) => shape ? z.object(shape) : z.looseObject({})}
 }
 
@@ -113,16 +116,54 @@ const TAKES = {
   shape: ({args, shapeAt}) => isPlainObject(args[0]) ? [[shapeAt(0)], 1] : [[], 0]
 }
 
-// A modifier applied to a schema: the zod method it names, with its argument.
-function applyModifier(schema, name, args, refuseHere) {
-  if (typeof schema[name] !== 'function') refuseHere(name)
-  return schema[name](...args)
+/**
+ * The phase each modifier applies in, so that the order modifiers are written
+ * in doesn't matter. A modifier not listed is a check.
+ *   variant     replaces an object schema, so it comes before anything kept on it
+ *   transform   changes the value, so the checks see what it made
+ *   check       tests the value; checks commute
+ *   wrapper     hides the methods of what it wraps, so it comes after them,
+ *               innermost first, in the order listed
+ *   annotation  describes the outermost schema, the one a caller holds
+ */
+const PHASES = {
+  variant: ['loose', 'strict', 'passthrough', 'strip'],
+  transform: ['trim', 'toLowerCase', 'toUpperCase', 'normalize'],
+  check: [],
+  wrapper: ['default', 'prefault', 'catch', 'nullable', 'nullish', 'optional', 'readonly'],
+  annotation: ['describe', 'meta']
+}
+
+const PHASE_ORDER = Object.keys(PHASES)
+const phaseOf = (name) => PHASE_ORDER.find(phase => PHASES[phase].includes(name)) ?? 'check'
+
+// Where a modifier falls in the order of application: its phase, then, for
+// wrappers, its place among them.
+const rankOf = ({name}) => {
+  const phase = phaseOf(name)
+  return [PHASE_ORDER.indexOf(phase), phase === 'wrapper' ? PHASES.wrapper.indexOf(name) : 0]
+}
+const byRank = (a, b) => {
+  const [ra, rb] = [rankOf(a), rankOf(b)]
+  return ra[0] - rb[0] || ra[1] - rb[1]
+}
+
+// Each modifier as the zod method calls it makes: {name, args, unknown},
+// where `unknown` is the problem to report if the schema has no such method.
+const callsOf = (modifier) => {
+  if (typeof modifier === 'string') return [{name: modifier, args: [], unknown: `has an unknown modifier '${modifier}'`}]
+  if (modifier instanceof RegExp) return [{name: 'regex', args: [modifier], unknown: `can't take the regex ${modifier}: it has no regex modifier`}]
+  return Object.entries(modifier).map(([name, value]) => ({
+    name,
+    args: name === 'nonempty' && value === true ? [] : [value],
+    unknown: `has an unknown modifier '${name}' (a key of the modifier ${show(modifier)})`
+  }))
 }
 
 /**
- * A schema with its modifiers applied. Constraints (objects and regexes)
- * apply before names, wherever they're written, so that ['array', 'optional',
- * {min: 1}] is an optional list of at least one item.
+ * A schema with its modifiers applied, each as the zod method it names, in
+ * the order of their phases rather than as written: ['string', 'optional',
+ * {min: 2}] is .min(2).optional().
  */
 function applyModifiers(schema, modifiers, fail) {
   const misplaced = modifiers.find(modifier => !isModifier(modifier))
@@ -131,14 +172,10 @@ function applyModifiers(schema, modifiers, fail) {
       ? `has the type ${show(misplaced)} where its modifiers go; the types it takes come right after its name`
       : `has ${show(misplaced)} where its modifiers go; a modifier is a name ('optional'), an object ({min: 1}) or a regex`)
   }
-  const constraints = modifiers.filter(modifier => typeof modifier !== 'string')
-  const names = modifiers.filter(modifier => typeof modifier === 'string')
-  const constrained = constraints.reduce((current, constraint) => constraint instanceof RegExp
-    ? applyModifier(current, 'regex', [constraint], () => fail(`can't take the regex ${constraint}: it has no regex modifier`))
-    : Object.entries(constraint).reduce((s, [name, value]) =>
-      applyModifier(s, name, name === 'nonempty' && value === true ? [] : [value],
-        () => fail(`has an unknown modifier '${name}' (a key of the modifier ${show(constraint)})`)), current), schema)
-  return names.reduce((current, name) => applyModifier(current, name, [], () => fail(`has an unknown modifier '${name}'`)), constrained)
+  return modifiers.flatMap(callsOf).sort(byRank).reduce((current, {name, args, unknown}) => {
+    if (typeof current[name] !== 'function') fail(unknown)
+    return current[name](...args)
+  }, schema)
 }
 
 // A type name with its arguments, which start at `offset` in the descriptor.

@@ -34,7 +34,7 @@ describe('parseSchema', () => {
       [['number', 'positive', 'optional'], 5, -5],
       [['number', 'int', 'nullable'], null, 5.5]
     ]],
-    ['constraints apply before names, wherever they are written', [
+    ['modifiers apply by phase, wherever they are written', [
       [['array', ['string'], 'optional', {min: 2}], undefined, ['a']],
       [['array', ['string'], 'optional', {min: 2}], ['a', 'b'], ['a']],
       [['array', ['string'], {min: 2}, 'optional'], undefined, ['a']],
@@ -105,6 +105,44 @@ describe('parseSchema', () => {
     })
   }
 
+  // Every ordering of a list.
+  const orderings = (list) => list.length <= 1 ? [list] :
+    list.flatMap((item, i) => orderings([...list.slice(0, i), ...list.slice(i + 1)]).map(rest => [item, ...rest]))
+
+  // [descriptor's type and types, its modifiers, values to try]
+  const unordered = [
+    [['string'], ['optional', {min: 2}, 'email'], [undefined, 'a', 'ab@c.de', 'not an email', 3]],
+    [['string'], ['trim', {min: 2}, 'nullable'], [' a ', ' ab ', null, undefined]],
+    [['array', ['number']], ['optional', {min: 2}, 'nullable', {max: 3}], [undefined, null, [1], [1, 2], [1, 2, 3, 4]]],
+    [['number'], ['int', {default: 1}, 'optional', 'positive'], [undefined, 2, 2.5, -1]],
+    [['object', {name: ['string']}], ['optional', 'loose', {describe: 'A person'}], [undefined, {name: 'a', extra: 1}, {}]]
+  ]
+
+  for (const [typed, modifiers, values] of unordered) {
+    it(`reads ${JSON.stringify([...typed, ...modifiers])} the same in every order of its modifiers`, () => {
+      const results = (descriptor) => values.map(value => parseSchema(descriptor).safeParse(value)).map(r => [r.success, r.data])
+      const [first, ...rest] = orderings(modifiers).map(ordering => results([...typed, ...ordering]))
+      for (const result of rest) assert.deepEqual(result, first)
+    })
+  }
+
+  it('checks what a transform made, wherever the transform is written', () => {
+    assert.equal(parseSchema(['string', {min: 2}, 'trim']).safeParse(' a ').success, false)
+    assert.equal(parseSchema(['string', {min: 2}, 'trim']).parse(' ab '), 'ab')
+    const shown = parseSchema(['string', 'optional', {min: 2}, 'trim'])
+    assert.deepEqual([shown.safeParse(' a ').success, shown.parse(' ab '), shown.parse(undefined)], [false, 'ab', undefined])
+  })
+
+  it('describes the outermost schema', () => {
+    assert.equal(parseSchema(['string', {describe: 'A name'}, 'optional']).description, 'A name')
+  })
+
+  it('takes a function, and nothing else, as a function', () => {
+    const fn = parseSchema(['function'])
+    assert.deepEqual([fn.safeParse(() => 1).success, fn.safeParse({}).success, fn.safeParse('() => 1').success], [true, false, false])
+    assert.equal(parseSchema(['function', 'optional']).safeParse(undefined).success, true)
+  })
+
   it('gives a default or a description through modifiers, as zod methods', () => {
     assert.equal(parseSchema(['string', {default: 'none'}]).parse(undefined), 'none')
     assert.equal(parseSchema(['string', {describe: 'A name'}]).description, 'A name')
@@ -170,10 +208,27 @@ describe('through zodex (docs/zodly-zodex.md)', () => {
   const serialized = [
     [['object'], {type: 'object', properties: {}, catchall: {type: 'unknown'}}],
     [['array', [{name: ['string']}]], {type: 'array', element: {type: 'object', properties: {name: {type: 'string'}}}}],
-    [['record', ['number']], {type: 'record', key: {type: 'string'}, value: {type: 'number'}}],
-    // zodex 4.0.1 drops .int() from zod 4: an upstream gap, pinned so that a fix shows here
-    [['number', 'int'], {type: 'number'}]
+    [['record', ['number']], {type: 'record', key: {type: 'string'}, value: {type: 'number'}}]
   ]
+
+  // zod 4 says a format two ways: as a type of its own (z.email()), or as a
+  // check on a string or number (z.string().email()), which is what zodly's
+  // modifiers make. zodex 4.0.1 keeps the first and drops the second: an
+  // upstream gap, pinned so that a fix shows here.
+  // [the format as a type, as a check, what zodex keeps of the type]
+  const formats = [
+    [z.email(), z.string().email(), {type: 'string', kind: 'email'}],
+    [z.uuid(), z.string().uuid(), {type: 'string', kind: 'uuid'}],
+    [z.url(), z.string().url(), {type: 'string', kind: 'url'}],
+    [z.int(), z.number().int(), {type: 'number', format: 'safeint'}]
+  ]
+
+  for (const [asType, asCheck, kept] of formats) {
+    it(`keeps ${asType.def.format} as a type, and drops it as a check`, () => {
+      assert.deepEqual(zerialize(asType), kept)
+      assert.deepEqual(zerialize(asCheck), {type: kept.type})
+    })
+  }
 
   for (const [descriptor, document] of serialized) {
     it(`serializes ${JSON.stringify(descriptor)}`, () => {
