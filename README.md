@@ -1,6 +1,6 @@
 # zodly
 
-[zod](https://zod.dev/) schemas written as plain data. A schema that is JSON serializeable, writable by hand, and readable at a glance:
+[zod](https://zod.dev/) schemas written as JSON serializable data with an elegant syntax.
 
 ```javascript
 import {parseSchema} from 'zodly'
@@ -16,7 +16,7 @@ order.parse(input) // a zod schema, like any other
 
 ## zodly and zod
 
-A descriptor describes a zod schema, and `parseSchema` turns it into one: zodly is what you write, and zod is what runs. For now the translation goes one way, from zodly to zod. zodly is meant to become a serialization format for zod, read and written both ways: a zod schema will turn back into the zodly that describes it, for the part of zod that zodly can say. Whatever zodly can't say, you write as zod, in place of a descriptor or inside one.
+`parseSchema` turns a zodly descriptor into an operable zod schema. Currently deserialization from zodly to zod is supported. We're looking at supporting serialization as well, for a subset of zod.
 
 ```
 zodly ──parseSchema──▶ zod
@@ -66,7 +66,7 @@ A descriptor is one of:
 | 4. wrappers | `default`, `prefault`, `catch`, `nullable`, `nullish`, `optional`, `readonly`, in that order | each hides the methods of what it wraps |
 | 5. annotations | `describe`, `meta` | they describe the outermost schema, the one you hold |
 
-So `['string', 'optional', {min: 2}, 'trim']` trims, checks the length, then makes it optional. The one thing this can't say is a check before a transform, such as checking a raw length and then trimming; write the zod schema for that.
+So `['string', 'optional', {min: 2}, 'trim']` trims first, checks the length, then makes it optional. Note that this disallows a check before a transform: such as checking a raw length and then trimming. Zod can do that, zodly cannot.
 
 **A modifier the schema has no method for is refused**, so a misspelling can't pass unnoticed.
 
@@ -107,15 +107,33 @@ An object schema's fields may themselves be object schemas, `{customer: {id: ['s
 
 ## The error type
 
-`error` is an error as data: a [JSON-LD](https://json-ld.org/) node of type `Error`, with an Error's `name` and `message`. Only those three are checked, so whoever produces errors can add fields of its own. By convention `cause` is the error behind it, in the same form:
+zod and zodex do not have any canonical way of expressing an error.
+
+zodly's `error` is an error as data: a JSON-LD node of type `Error`, with an Error's `name` and `message`. Only those three are checked; any other field is allowed, so whoever produces errors can add fields of its own. By convention `cause` is the error behind it, in the same form.
 
 ```javascript
 {'@type': 'Error', name: 'TypeError', message: 'not a number', cause: {'@type': 'Error', name: 'Error', message: 'bad input'}}
 ```
 
-Any error becomes recognisable as one by adding `'@type': 'Error'` to it. It composes like any type: `['error', 'optional']`, `['union', ['error'], ['null']]`, `['array', ['error']]`. It is exported as `errorSchema`. JSON-LD's list form of `@type` (`['Error', 'Thing']`) isn't recognised, since that check can't be serialized through zodex.
+Using this form, you can make any Error recognizeable by zodly simply by adding `@type: 'Error` to it.
 
-## Errors in a descriptor
+Since zod/zodex have no error type of their own, they would represent this as the underlying object schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "@type": {"type": "literal", "values": ["Error"]},
+    "name": {"type": "string"},
+    "message": {"type": "string"}
+  },
+  "catchall": {"type": "unknown"}
+}
+```
+
+Unlike JSON-LD, zodly does not support a list of types (`['Error', 'Thing']`). That's because this is not a serializable form in zodex, and we thought it safer to maintain compatibility than to chase after an edge case.  If you want this: tell us.
+
+## zodly parse errors
 
 A descriptor that can't be read is refused with what each part was read as, and where it sits in the descriptor:
 
