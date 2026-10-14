@@ -1,6 +1,6 @@
 # zodly
 
-[zod](https://zod.dev/) schemas written as plain data. A schema you can put in a JSON-like document, write by hand, and read at a glance:
+[zod](https://zod.dev/) schemas written as plain data. A schema that is JSON serializeable, writable by hand, and readable at a glance:
 
 ```javascript
 import {parseSchema} from 'zodly'
@@ -14,11 +14,13 @@ const order = parseSchema({
 order.parse(input) // a zod schema, like any other
 ```
 
-zodly is for schemas that people write: in configuration, in a query, in a service's declaration. zod itself is what runs them, and [zodex](https://www.npmjs.com/package/zodex) is a fuller serialization for tools to store and exchange, 2–4× longer; see [zodly vs zodex](docs/zodly-zodex.md).
+## zodly and zod
+
+A descriptor describes a zod schema, and `parseSchema` turns it into one: zodly is what you write, and zod is what runs. For now the translation goes one way, from zodly to zod. zodly is meant to become a serialization format for zod, read and written both ways: a zod schema will turn back into the zodly that describes it, for the part of zod that zodly can say. Whatever zodly can't say, you write as zod, in place of a descriptor or inside one.
 
 ```
-zodly (written by people) ──parse──▶ zod (runs validation) ◀──dezerialize── zodex (stored, exchanged)
-                                        └──────────zerialize─────────▶
+zodly ──parseSchema──▶ zod
+      ◀── planned ────
 ```
 
 ## Descriptors
@@ -143,3 +145,7 @@ zod 4 is a peer dependency.
 ## Design
 
 In general we try to map closely to the `zod` API and do minimal processing.  But in a few places we don't mind letting go of "syntax regularity" in order to support less verbosity and a more intuitive API.
+
+## See also
+
+[zodly beside zodex](docs/zodly-zodex.md), a complete serialization of zod, row by row.
