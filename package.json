@@ -1,6 +1,6 @@
 {
-  "name": "zodly",
-  "version": "0.1.0",
+  "name": "@tlsft/zodly",
+  "version": "0.2.0",
   "description": "zod schemas written as plain data: ['string', 'email', 'optional']",
   "type": "module",
   "main": "index.js",
@@ -33,6 +33,9 @@
     "url": "https://github.com/TorchlightSoftware/zodly/issues"
   },
   "homepage": "https://github.com/TorchlightSoftware/zodly#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "zod": "^4.0.5"
   },

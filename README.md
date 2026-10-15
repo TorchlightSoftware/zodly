@@ -3,7 +3,7 @@
 [zod](https://zod.dev/) schemas written as JSON serializable data with an elegant syntax.
 
 ```javascript
-import {parseSchema} from 'zodly'
+import {parseSchema} from '@tlsft/zodly'
 
 const order = parseSchema({
   customer: {id: ['string', 'uuid'], email: ['string', 'email']},
@@ -33,10 +33,11 @@ A descriptor is one of:
 | `['string', 'email', {min: 3}]` | a type name, then its modifiers |
 | `['array', ['string'], {min: 1}]` | a type name, the types it takes, then its modifiers |
 | `{name: ['string']}` | an object schema: each field's descriptor |
-| `[{name: ['string']}, 'optional']` | an object schema, boxed, so that it takes modifiers |
+| `[{name: ['string']}, 'optional']` | an object schema, boxed, so that it takes modifiers and cannot be confused with being a modifier itself |
+| `['zod', z.string(), 'optional']` | a zod schema, named, so that it takes modifiers |
 | `z.string()` | a zod schema, as it is, anywhere a descriptor goes |
 
-**After a type name, a bare string or object is always a modifier.** A type there is always bracketed, `['string']`, or, for an object schema, boxed, `[{name: ['string']}]`. The one exception is `object`, whose first object is its object schema: `['object', {name: ['string']}]`. So a reader never has to guess what a bare `{…}` means:
+**After a type name (or object schema), a bare string or object is always a modifier.** A type there is always bracketed, `['string']`, or, for an object schema, boxed, `[{name: ['string']}]`.  So you can determine the meaning of {} by its position in the surrounding [].
 
 ```javascript
 ['array', {min: 2}]                     // a list of anything, at least 2 long
@@ -70,6 +71,8 @@ So `['string', 'optional', {min: 2}, 'trim']` trims first, checks the length, th
 
 **A modifier the schema has no method for is refused**, so a misspelling can't pass unnoticed.
 
+**Tags are names for other programs to read.** `{tags: ['target']}` is shorthand for `{meta: {tags: ['target']}}`; it validates nothing, and `tagsOf(schema)` reads the tags back. Like `meta`, it's an annotation, so it sits on the outermost schema.
+
 ## Types
 
 ```javascript
@@ -77,6 +80,7 @@ So `['string', 'optional', {min: 2}, 'trim']` trims first, checks the length, th
 ['string'] ['number'] ['boolean'] ['date'] ['any'] ['unknown'] ['void'] ['undefined'] ['null'] ['never']
 ['error']                                        // an error as data (below)
 ['function']                                     // a function, such as a nested call
+['function', {input: ['tuple', ['string']], output: ['number']}]   // its arguments and what it returns, as zod's methods
 
 // Lists and records
 ['array']                                        // a list of anything
@@ -87,9 +91,8 @@ So `['string', 'optional', {min: 2}, 'trim']` trims first, checks the length, th
 
 // Objects
 {name: ['string'], age: ['number']}              // an object schema
-['object', {name: ['string']}, 'optional']       // the same, with modifiers
-[{name: ['string']}, 'optional']                 // the same, boxed
-['object', {name: ['string']}, 'loose']          // other fields are allowed too
+[{name: ['string']}, 'optional']                 // the same, boxed, with modifiers
+[{name: ['string']}, 'loose']                    // other fields are allowed too
 ['object']                                       // any object
 
 // Unions, enums and tuples
@@ -101,9 +104,34 @@ So `['string', 'optional', {min: 2}, 'trim']` trims first, checks the length, th
 // Wrappers (the modifiers 'optional' and 'nullable' say the same)
 ['optional', ['number']]
 ['nullable', ['string']]
+
+// A zod schema, with modifiers
+['zod', z.string().length(5), 'optional']
 ```
 
 An object schema's fields may themselves be object schemas, `{customer: {id: ['string']}}`, or bare type names, `{website: 'string'}`.
+
+## Dynamic types
+
+A dynamic type is one zodly can't know by itself: the schema named `Address`, or, in MicroQL, the type of another field. zodly reserves the type name `type` for them and leaves their meaning to you: a preprocessor, given by type name, rewrites a form before zodly reads it.
+
+```javascript
+const schemas = {Address: parseSchema({street: ['string'], city: ['string']})}
+
+const order = parseSchema({
+  shipTo: ['type', 'Address'],
+  billTo: ['type', 'Address', 'optional']
+}, {
+  preprocess: {
+    type: ([, name, ...modifiers]) => ['zod', schemas[name], ...modifiers]
+  }
+})
+```
+
+- A preprocessor is `(form, path) => form`: it gets the form as written, `['type', 'Address', 'optional']`, and where it sits, `['billTo']`.
+- zodly reads what it returns as written at its root, so returning the form is a no-op: `{function: (form) => form}` changes nothing. The descriptors inside it are preprocessed as usual.
+- An error a preprocessor throws is reported where its form is, like zodly's own.
+- Any type name can have a preprocessor; `type` has no meaning without one, and is refused: `'type' is reserved for dynamic types: parseSchema needs a preprocessor for it`.
 
 ## The error type
 
@@ -149,7 +177,8 @@ Unknown type name 'strng' on ["strng"], at order.items[1]
 
 | Export | Is |
 |---|---|
-| `parseSchema(descriptor)` | the zod schema a descriptor describes; a zod schema comes back as it is |
+| `parseSchema(descriptor, {preprocess}?)` | the zod schema a descriptor describes; a zod schema comes back as it is. `preprocess` maps type names to preprocessors ([Dynamic types](#dynamic-types)). |
+| `tagsOf(schema)` | the tags written on a schema with `{tags: [...]}`, or none |
 | `validate(descriptor, value, show?)` | checks a value, throwing an Error with one line per problem: `- items[0].name: 123 => Invalid input: expected string, received number`. `show` renders the values in those lines (default: JSON). |
 | `formatError(zodError, value, show?)` | a zod error as those lines |
 | `errorSchema` | the `error` type's zod schema |

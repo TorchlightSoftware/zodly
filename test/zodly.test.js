@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import {describe, it} from 'node:test'
 import {z} from 'zod'
 import {zerialize, dezerialize} from 'zodex'
-import {errorSchema, parseSchema, validate} from '../index.js'
+import {errorSchema, parseSchema, tagsOf, validate} from '../index.js'
 
 describe('parseSchema', () => {
   // [category, [descriptor, a value that fits, a value that doesn't]]
@@ -53,15 +53,12 @@ describe('parseSchema', () => {
     ['objects', [
       [{name: ['string'], age: ['number', 'positive']}, {name: 'J', age: 25}, {name: 'J', age: -5}],
       [{website: 'string'}, {website: 'a'}, {}],
-      [['object', {name: ['string']}], {name: 'a'}, {}],
-      [['object', {name: ['string']}, 'optional'], undefined, 'not-object'],
-      [['object', {name: ['string']}, 'nullable'], null, 'not-object'],
-      [['object', {text: ['string']}, 'loose'], {text: 'a', extra: 1}, {extra: 1}],
       [['object'], {anything: 1}, 'not-object']
     ]],
     ['boxed object schemas', [
       [[{name: ['string']}], {name: 'a'}, {}],
       [[{name: ['string']}, 'optional'], undefined, {}],
+      [[{name: ['string']}, 'nullable'], null, 'not-object'],
       [[{text: ['string']}, 'loose'], {text: 'a', extra: 1}, {extra: 1}],
       [['array', [{min: ['string']}]], [{min: 'a'}], [{min: 1}]],
       [['array', [{productId: ['string']}], {min: 1}], [{productId: 'p'}], []],
@@ -115,7 +112,8 @@ describe('parseSchema', () => {
     [['string'], ['trim', {min: 2}, 'nullable'], [' a ', ' ab ', null, undefined]],
     [['array', ['number']], ['optional', {min: 2}, 'nullable', {max: 3}], [undefined, null, [1], [1, 2], [1, 2, 3, 4]]],
     [['number'], ['int', {default: 1}, 'optional', 'positive'], [undefined, 2, 2.5, -1]],
-    [['object', {name: ['string']}], ['optional', 'loose', {describe: 'A person'}], [undefined, {name: 'a', extra: 1}, {}]]
+    [[{name: ['string']}], ['optional', 'loose', {describe: 'A person'}], [undefined, {name: 'a', extra: 1}, {}]],
+    [['number'], [{tags: ['a']}, 'optional', {describe: 'A count'}], [undefined, 1, 'one']]
   ]
 
   for (const [typed, modifiers, values] of unordered) {
@@ -173,7 +171,12 @@ describe('parseSchema', () => {
     ['an empty array', [], /^A descriptor array starts with a type name/],
     ['undefined', undefined, /^Not a descriptor/],
     ['null', null, /^Not a descriptor/],
-    ['a number in an object schema', {count: 3}, /^Not a descriptor.* on 3, at count$/]
+    ['a number in an object schema', {count: 3}, /^Not a descriptor.* on 3, at count$/],
+    ['an object schema after \'object\', read as a modifier', ['object', {name: ['string']}], /^'object' has an unknown modifier 'name'/],
+    ['\'type\', reserved for dynamic types', {home: ['type', 'Address']}, /^'type' is reserved for dynamic types: parseSchema needs a preprocessor for it on \["type","Address"\], at home$/],
+    ['\'type\' as a bare name', 'type', /^'type' is reserved for dynamic types/],
+    ['\'zod\' without a zod schema', ['zod', ['string']], /^'zod' takes a zod schema first/],
+    ['a malformed function input', ['function', {input: ['strng']}], /^Unknown type name 'strng' on \["strng"\], at \[1\]\.input$/]
   ]
 
   for (const [description, descriptor, message] of refused) {
@@ -181,6 +184,76 @@ describe('parseSchema', () => {
       assert.throws(() => parseSchema(descriptor), {message})
     })
   }
+})
+
+describe('dynamic types, through preprocessors', () => {
+  const schemas = {Address: parseSchema({street: ['string']})}
+  // A named schema, keeping the form's modifiers.
+  const named = {type: ([, name, ...modifiers]) => ['zod', schemas[name], ...modifiers]}
+
+  it('reads \'type\' as its preprocessor says, applying its modifiers as zodly does', () => {
+    const schema = parseSchema({home: ['type', 'Address', 'optional']}, {preprocess: named})
+    assert.deepEqual([{home: {street: 'a'}}, {}, {home: {street: 1}}].map(value => schema.safeParse(value).success), [true, true, false])
+  })
+
+  it('hands the preprocessor the form as written, and where it is', () => {
+    const seen = []
+    const type = (form, path) => {
+      seen.push([form, path])
+      return ['any']
+    }
+    parseSchema({items: ['array', ['type', 'Address', 'optional']]}, {preprocess: {type}})
+    assert.deepEqual(seen, [[['type', 'Address', 'optional'], ['items', 1]]])
+  })
+
+  it('reads what a preprocessor returns as written, so returning the form is a no-op', () => {
+    const fn = parseSchema(['function', 'optional'], {preprocess: {function: (form) => form}})
+    assert.deepEqual([fn.safeParse(() => 1).success, fn.safeParse(undefined).success, fn.safeParse(1).success], [true, true, false])
+  })
+
+  it('preprocesses the descriptors nested in what a preprocessor returns', () => {
+    const preprocess = {...named, function: ([name, signature]) => [name, {input: ['tuple', signature.input]}]}
+    const fn = parseSchema(['function', {input: ['type', 'Address']}], {preprocess})
+    assert.deepEqual(fn.def.input.def.items.map(item => item.def.type), ['object'])
+  })
+
+  it('preprocesses a bare type name', () => {
+    assert.equal(parseSchema('type', {preprocess: {type: () => ['string']}}).safeParse('a').success, true)
+  })
+
+  it('reports a preprocessor\'s error where its form is', () => {
+    const preprocess = {type: () => { throw new Error('No schema named Adress') }}
+    assert.throws(() => parseSchema({home: ['type', 'Adress']}, {preprocess}), {message: /^No schema named Adress on \["type","Adress"\], at home$/})
+  })
+})
+
+describe('the zod type', () => {
+  it('takes a zod schema, then modifiers', () => {
+    const schema = parseSchema(['zod', z.string().min(2), 'optional'])
+    assert.deepEqual(['ab', undefined, 'a'].map(value => schema.safeParse(value).success), [true, true, false])
+  })
+})
+
+describe('tags', () => {
+  it('are meta, read back by tagsOf from the outermost schema', () => {
+    const schema = parseSchema(['array', 'optional', {tags: ['target'], describe: 'The list'}])
+    assert.deepEqual([tagsOf(schema), schema.description], [['target'], 'The list'])
+    assert.deepEqual(parseSchema(['string', {tags: ['a']}]).meta(), {tags: ['a']})
+  })
+
+  it('are none on a schema without them', () => {
+    assert.deepEqual(tagsOf(parseSchema(['string'])), [])
+  })
+})
+
+describe('the function type', () => {
+  it('takes input and output as zod\'s methods, each a descriptor', () => {
+    const fn = parseSchema(['function', {input: ['tuple', ['string']], output: ['number']}])
+    assert.deepEqual([fn.def.input.def.type, fn.def.output.def.type], ['tuple', 'number'])
+    const length = fn.parse((text) => text.length)
+    assert.equal(length('abc'), 3)
+    assert.throws(() => length(3))
+  })
 })
 
 describe('validate', () => {

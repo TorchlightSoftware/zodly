@@ -26,7 +26,7 @@ The default (shorthand) notation for a type in `zodly` is to simply use its name
 
 ## Object Declarations
 
-At the root, and as a field's type, object syntax represents an object in the target document, so zodly can represent objects in direct form without a nested "properties".  After a type name, a bare object is always a modifier, so an object type there is boxed, `[{name: ['string']}]`, or written `['object', {name: ['string']}]`.
+At the root, and as a field's type, object syntax represents an object in the target document, so zodly can represent objects in direct form without a nested "properties".  After a type name, a bare object is always a modifier, so an object type there is boxed, `[{name: ['string']}]`.
 
 ```javascript
 // zodly
@@ -59,10 +59,9 @@ For annotating more complex data types, every type is expressible in array notat
 | `['array', ['string'], 'optional']` | `{"type": "array", "element": {"type": "string"}, "isOptional": true}` |
 | `['array', ['string'], 'nullable']` | `{"type": "array", "element": {"type": "string"}, "isNullable": true}` |
 | `['array']` | `{"type": "array", "element": {"type": "any"}}` |
-| `['object', {name: ['string'], age: ['number']}]` | `{"type": "object", "properties": {"name": {"type": "string"}, "age": {"type": "number"}}}` |
-| `{name: ['string'], age: ['number']}` | same as above |
-| `['object', {name: ['string']}, 'optional']` | `{"type": "object", "properties": {"name": {"type": "string"}}, "isOptional": true}` |
-| `['object', {name: ['string']}, 'nullable']` | `{"type": "object", "properties": {"name": {"type": "string"}}, "isNullable": true}` |
+| `{name: ['string'], age: ['number']}` | `{"type": "object", "properties": {"name": {"type": "string"}, "age": {"type": "number"}}}` |
+| `[{name: ['string']}, 'optional']` | `{"type": "object", "properties": {"name": {"type": "string"}}, "isOptional": true}` |
+| `[{name: ['string']}, 'nullable']` | `{"type": "object", "properties": {"name": {"type": "string"}}, "isNullable": true}` |
 | `['object']` | `{"type": "object", "properties": {}, "catchall": {"type": "unknown"}}` (a loose object, as `error` is below) |
 | `['array', [{name: ['string']}]]` | `{"type": "array", "element": {"type": "object", "properties": {"name": {"type": "string"}}}}` |
 | `['record', ['number']]` | `{"type": "record", "key": {"type": "string"}, "value": {"type": "number"}}` |

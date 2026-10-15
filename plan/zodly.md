@@ -1,18 +1,8 @@
 # zodly — open items
 
-Status: implemented — the package is split out of microql (`zodly`, a sibling of microql), pending review and its first publish; the items below are still draft
+Status: draft — dynamic types, preprocessors, `zod`, `tags` and `function {input, output}` are implemented (see the README); what's left is below
 
-zodly is MicroQL's schema shorthand, now its own package: `['string', 'email', 'optional']`, `{name: ['string']}`, `['array', [{id: ['string']}], {min: 1}]`. Its README has the syntax, and `zodly/docs/zodly-zodex.md` compares it with zodex. MicroQL depends on it for Service Call Validations, Service Schema Validations, the trigger's schema and `util/each`'s `skip`. What's left:
-
-## Generics: `['type', source]` as a zodly type of its own
-
-Beside `['string']`, `{name: ['string']}` and `['array', ['string']]`, a descriptor `['type', source]` would be an escape hatch into MicroQL's source grammar, which says the type is generic: `['array', ['type', {fromList: 'on'}]]`, `{extra: ['type', {fromField: 'with'}, 'optional']}`. Inside the escape hatch an object is a source, not an object schema, so the two never collide; and a source reaches back into zodly through `{fromZodly: source}`, so the grammars nest both ways and the document stays serializable. A document's root is an object, and sources name paths inside it, as MicroQL's field paths do.
-
-This is exactly the `type` tag a MicroQL declaration already writes (`output: [['type', {pick: [{fromField: 'on'}, {fromValue: 'fields'}]}]]`), whose config is already a zodly descriptor or a source (MicroQL 1.1.0), so a declaration's types would become zodly documents rather than a second grammar.
-
-Two interpreters: the plain one resolves `['type', …]` with no bindings, reading `fromField` as the descriptor written at that path and anything else as any, and validates at run time as today; the generic one takes bindings (each field's actual type and literal value, which MicroQL's plan computes) and resolves the sources against them, for static typing. The source grammar (MicroQL's `declaration.js` and `plan.js` `SOURCES`) and its type operators (`types.js`: `union`, `difference`, `pick`, `merge`, `literalOf`, `describedBy`) would move into zodly; MicroQL keeps only what each field is in a given call.
-
-Precedent: zod's generics are TypeScript-only and don't serialize; JSON Schema 2020-12's `$dynamicRef` is the closest serializable relative, and far clumsier to write.
+zodly is MicroQL's schema shorthand, now its own package (`@tlsft/zodly`): `['string', 'email', 'optional']`, `{name: ['string']}`, `['array', [{id: ['string']}], {min: 1}]`. Its README has the syntax, and `docs/zodly-zodex.md` compares it with zodex.
 
 ## Unanswered questions
 
@@ -25,3 +15,6 @@ Precedent: zod's generics are TypeScript-only and don't serialize; JSON Schema 2
    > **Formats added as checks are dropped by `zerialize`.** With zod 4.6.7 and zodex 4.0.1, `zerialize(z.email())` is `{type: 'string', kind: 'email'}`, but `zerialize(z.string().email())` is `{type: 'string'}`. The same holds for `z.uuid()`/`.uuid()`, `z.url()`/`.url()` and `z.int()`/`z.number().int()` (`format: 'safeint'`). In zod 4 the method forms add a `string_format`/`number_format` check to `def.checks` rather than setting `def.format`, so a schema written with them round-trips without its format, and accepts values it shouldn't. Expected: both forms serialize the same.
 
 4. **What does MicroQL do with a descriptor that is zodex?** The two can't be told apart reliably. zodex's `{"type": "string"}` is also valid zodly, meaning "an object whose field `type` is a string". So should the caller say which format a schema is in, or should documents be zodex and hand-written schemas zodly, decided by where they appear?
+5. **Should a bare zod schema still stand where a descriptor goes?** `['zod', schema]` says the same thing explicitly, and keeps every descriptor serializable but those that name zod.
+6. **Should `any` have a shorthand for "anything, or nothing"?** zod 4.6.7 refuses an absent key even for a `z.any()` field, so a field that may be left out is `['any', 'optional']`. MicroQL's tag-only fields read `['any', 'optional', {tags: ['target']}]`.
+7. **The next publish is 0.2.0:** dropping `['object', {shape}]` breaks descriptors written with it.
