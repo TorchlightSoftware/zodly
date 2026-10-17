@@ -113,7 +113,7 @@ An object schema's fields may themselves be object schemas, `{customer: {id: ['s
 
 ## Dynamic types
 
-A dynamic type is one zodly can't know by itself: the schema named `Address`, or, in MicroQL, the type of another field. zodly reserves the type name `type` for them and leaves their meaning to you: a preprocessor, given by type name, rewrites a form before zodly reads it.
+A dynamic type is one zodly can't know by itself: the schema named `Address`, or, in MicroQL, the type of another field. zodly reserves the type name `type` for them and leaves their meaning to you: a preprocessor, given by type name, rewrites a form before zodly reads it. A preprocessor can also give meaning to a type name of your own.
 
 ```javascript
 const schemas = {Address: parseSchema({street: ['string'], city: ['string']})}
@@ -128,10 +128,12 @@ const order = parseSchema({
 })
 ```
 
-- A preprocessor is `(form, path) => form`: it gets the form as written, `['type', 'Address', 'optional']`, and where it sits, `['billTo']`.
+- A preprocessor is `(form, path, {parse}) => form`: it gets the form as written, `['type', 'Address', 'optional']`, and where it sits, `['billTo']`.
 - zodly reads what it returns as written at its root, so returning the form is a no-op: `{function: (form) => form}` changes nothing. The descriptors inside it are preprocessed as usual.
-- An error a preprocessor throws is reported where its form is, like zodly's own.
-- Any type name can have a preprocessor; `type` has no meaning without one, and is refused: `'type' is reserved for dynamic types: parseSchema needs a preprocessor for it`.
+- A preprocessor that reads a descriptor itself, such as one a dynamic type holds, does so with `parse`, its third argument, `(form, path, {parse})`. `parse` reads it by the same preprocessors, so a dynamic type inside it is read like any other, however deep.
+- An error a preprocessor throws is reported where its form is, like zodly's own; one in a descriptor it reads with `parse` is reported once, where that descriptor is.
+- Any type name can have a preprocessor, including one zodly doesn't have: a preprocessor is how a caller adds its own type names, by rewriting them into zodly's. MicroQL's `['call', {input, output}]` is a preprocessor that writes a `function` of one input. Without its preprocessor, such a name is an unknown type name.
+- `type` has no meaning without a preprocessor, and is refused: `'type' is reserved for dynamic types: parseSchema needs a preprocessor for it`.
 
 ## The error type
 

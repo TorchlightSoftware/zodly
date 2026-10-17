@@ -217,6 +217,16 @@ describe('dynamic types, through preprocessors', () => {
     assert.deepEqual(fn.def.input.def.items.map(item => item.def.type), ['object'])
   })
 
+  it('reads a type name zodly doesn\'t have, when a preprocessor gives it one', () => {
+    const preprocess = {handler: ([, input, ...modifiers]) => ['function', {input: ['tuple', input]}, ...modifiers]}
+    const fn = parseSchema({onClick: ['handler', ['string'], 'optional']}, {preprocess}).def.shape.onClick.unwrap()
+    assert.deepEqual(fn.def.input.def.items.map(item => item.def.type), ['string'])
+  })
+
+  it('refuses a type name of its caller\'s when the preprocessor for it is missing', () => {
+    assert.throws(() => parseSchema(['handler', ['string']]), {message: /^Unknown type name 'handler'/})
+  })
+
   it('preprocesses a bare type name', () => {
     assert.equal(parseSchema('type', {preprocess: {type: () => ['string']}}).safeParse('a').success, true)
   })
@@ -224,6 +234,27 @@ describe('dynamic types, through preprocessors', () => {
   it('reports a preprocessor\'s error where its form is', () => {
     const preprocess = {type: () => { throw new Error('No schema named Adress') }}
     assert.throws(() => parseSchema({home: ['type', 'Adress']}, {preprocess}), {message: /^No schema named Adress on \["type","Adress"\], at home$/})
+  })
+
+  // A dynamic type that is either of two descriptors, read by the preprocessor itself.
+  const either = {type: ([, {either: [one, other]}], path, {parse}) => ['zod', z.union([parse(one), parse(other)])]}
+
+  it('hands a preprocessor a parse that reads descriptors with the same preprocessors', () => {
+    const preprocess = {...either, function: ([name, signature]) => [name, {input: ['tuple', signature.input]}]}
+    const schema = parseSchema(['type', {either: [['null'], ['function', {input: ['string']}]]}], {preprocess})
+    const fn = schema.def.options[1]
+    assert.deepEqual(fn.def.input.def.items.map(item => item.def.type), ['string'])
+  })
+
+  it('reads a dynamic type inside what a preprocessor parses, however deep', () => {
+    const preprocess = {type: (form, path, {parse}) => typeof form[1] === 'string' ? ['zod', schemas[form[1]]] : either.type(form, path, {parse})}
+    const schema = parseSchema(['type', {either: [['null'], ['type', {either: [['number'], ['type', 'Address']]}]]}], {preprocess})
+    assert.deepEqual([null, 1, {street: 'a'}, 'a'].map(value => schema.safeParse(value).success), [true, true, true, false])
+  })
+
+  it('reports an error in what a preprocessor parses once, where it is', () => {
+    assert.throws(() => parseSchema({home: ['type', {either: [['null'], ['strng']]}]}, {preprocess: either}),
+      {message: /^Unknown type name 'strng' on \["strng"\], at home$/})
   })
 })
 

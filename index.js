@@ -19,7 +19,8 @@
  *
  * 'type' is reserved for dynamic types, which zodly leaves to its caller: a
  * preprocessor, given by type name, rewrites a form before zodly reads it
- * (see parseSchema).
+ * (see parseSchema). A preprocessor may also give meaning to a type name zodly
+ * doesn't have, which is how a caller adds type names of its own.
  */
 
 import {z} from 'zod'
@@ -91,10 +92,13 @@ const show = (descriptor) => JSON.stringify(descriptor, (_, value) =>
 const pathText = (path) => path.length === 0 ? '.' : path.map((segment, index) =>
   typeof segment === 'number' ? `[${segment}]` : index === 0 ? segment : `.${segment}`).join('')
 
+// A descriptor refused, its message saying where it is.
+class Refusal extends Error {}
+
 // A descriptor that can't be read, with what was wrong, where it is in the
 // root descriptor.
 function refuse(problem, descriptor, path) {
-  throw new Error(`${problem} on ${show(descriptor)}${path.length ? `, at ${pathText(path)}` : ''}`)
+  throw new Refusal(`${problem} on ${show(descriptor)}${path.length ? `, at ${pathText(path)}` : ''}`)
 }
 
 const leadingTypes = (args) => {
@@ -225,11 +229,13 @@ const typeNameOf = (descriptor) =>
   typeof descriptor === 'string' ? descriptor : Array.isArray(descriptor) && typeof descriptor[0] === 'string' ? descriptor[0] : undefined
 
 // What a preprocessor makes of a form, with an error it throws reported
-// where the form is.
-function preprocessed(preprocessor, descriptor, path) {
+// where the form is. It reads the descriptors it holds with `parse`, by the
+// same preprocessors; a refusal there already says where it is.
+function preprocessed(preprocessor, descriptor, path, options) {
   try {
-    return preprocessor(descriptor, path)
+    return preprocessor(descriptor, path, {parse: (held) => parse(held, path, options)})
   } catch (error) {
+    if (error instanceof Refusal) throw error
     refuse(error.message, descriptor, path)
   }
 }
@@ -237,7 +243,7 @@ function preprocessed(preprocessor, descriptor, path) {
 // A descriptor, preprocessed first when its type name has a preprocessor.
 function parse(descriptor, path, options) {
   const preprocessor = options.preprocess?.[typeNameOf(descriptor)]
-  return read(preprocessor ? preprocessed(preprocessor, descriptor, path) : descriptor, path, options)
+  return read(preprocessor ? preprocessed(preprocessor, descriptor, path, options) : descriptor, path, options)
 }
 
 // A descriptor as written, without preprocessing it; the descriptors it holds are.
@@ -262,11 +268,13 @@ const parseBoxed = (shape, modifiers, descriptor, path, options) =>
  * The zod schema a descriptor describes. A descriptor that can't be read is
  * refused with what was wrong and where, inside the descriptor, it is.
  *
- * `preprocess` maps type names to preprocessors, `(form, path) => form`. zodly
- * hands each form whose type name has one to it, as written, and reads what
- * comes back in its place: as written at its root (so returning the form is
- * a no-op), with the descriptors it holds preprocessed in turn. This is how
- * a caller gives 'type' its meaning.
+ * `preprocess` maps type names to preprocessors, `(form, path, {parse}) =>
+ * form`. zodly hands each form whose type name has one to it, as written, and
+ * reads what comes back in its place: as written at its root (so returning
+ * the form is a no-op), with the descriptors it holds preprocessed in turn. A
+ * preprocessor that reads a descriptor itself does so with `parse`, by the
+ * same preprocessors. This is how a caller gives 'type' its meaning, and
+ * names types of its own.
  */
 export const parseSchema = (descriptor, {preprocess} = {}) => parse(descriptor, [], {preprocess})
 
