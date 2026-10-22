@@ -131,7 +131,7 @@ const order = parseSchema({
 - A preprocessor is `(form, path, {parse}) => form`: it gets the form as written, `['type', 'Address', 'optional']`, and where it sits, `['billTo']`.
 - zodly reads what it returns as written at its root, so returning the form is a no-op: `{function: (form) => form}` changes nothing. The descriptors inside it are preprocessed as usual.
 - A preprocessor that reads a descriptor itself, such as one a dynamic type holds, does so with `parse`, its third argument, `(form, path, {parse})`. `parse` reads it by the same preprocessors, so a dynamic type inside it is read like any other, however deep.
-- An error a preprocessor throws is reported where its form is, like zodly's own; one in a descriptor it reads with `parse` is reported once, where that descriptor is.
+- An error a preprocessor throws is reported where its form is, like zodly's own, and kept as the report's `cause`, with whatever fields it carries (a `code`, say); one in a descriptor it reads with `parse` is reported once, where that descriptor is.
 - Any type name can have a preprocessor, including one zodly doesn't have: a preprocessor is how a caller adds its own type names, by rewriting them into zodly's. MicroQL's `['call', {input, output}]` is a preprocessor that writes a `function` of one input. Without its preprocessor, such a name is an unknown type name.
 - `type` has no meaning without a preprocessor, and is refused: `'type' is reserved for dynamic types: parseSchema needs a preprocessor for it`.
 

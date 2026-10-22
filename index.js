@@ -96,9 +96,9 @@ const pathText = (path) => path.length === 0 ? '.' : path.map((segment, index) =
 class Refusal extends Error {}
 
 // A descriptor that can't be read, with what was wrong, where it is in the
-// root descriptor.
-function refuse(problem, descriptor, path) {
-  throw new Refusal(`${problem} on ${show(descriptor)}${path.length ? `, at ${pathText(path)}` : ''}`)
+// root descriptor; options carry the error behind it, if any, as its cause.
+function refuse(problem, descriptor, path, options) {
+  throw new Refusal(`${problem} on ${show(descriptor)}${path.length ? `, at ${pathText(path)}` : ''}`, options)
 }
 
 const leadingTypes = (args) => {
@@ -229,14 +229,15 @@ const typeNameOf = (descriptor) =>
   typeof descriptor === 'string' ? descriptor : Array.isArray(descriptor) && typeof descriptor[0] === 'string' ? descriptor[0] : undefined
 
 // What a preprocessor makes of a form, with an error it throws reported
-// where the form is. It reads the descriptors it holds with `parse`, by the
-// same preprocessors; a refusal there already says where it is.
+// where the form is, and kept as the report's cause. It reads the descriptors
+// it holds with `parse`, by the same preprocessors; a refusal there already
+// says where it is.
 function preprocessed(preprocessor, descriptor, path, options) {
   try {
     return preprocessor(descriptor, path, {parse: (held) => parse(held, path, options)})
   } catch (error) {
     if (error instanceof Refusal) throw error
-    refuse(error.message, descriptor, path)
+    refuse(error.message, descriptor, path, {cause: error})
   }
 }
 

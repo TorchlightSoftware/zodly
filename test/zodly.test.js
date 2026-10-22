@@ -236,6 +236,16 @@ describe('dynamic types, through preprocessors', () => {
     assert.throws(() => parseSchema({home: ['type', 'Adress']}, {preprocess}), {message: /^No schema named Adress on \["type","Adress"\], at home$/})
   })
 
+  it('keeps a preprocessor\'s error as the cause of its report, with the fields its caller gave it', () => {
+    const thrown = Object.assign(new Error('No schema named Adress'), {code: 'unknown-schema'})
+    const preprocess = {type: () => { throw thrown }}
+    assert.throws(() => parseSchema({home: ['type', 'Adress']}, {preprocess}), (error) => {
+      assert.equal(error.cause, thrown)
+      assert.equal(error.cause.code, 'unknown-schema')
+      return true
+    })
+  })
+
   // A dynamic type that is either of two descriptors, read by the preprocessor itself.
   const either = {type: ([, {either: [one, other]}], path, {parse}) => ['zod', z.union([parse(one), parse(other)])]}
 
